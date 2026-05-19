@@ -11,6 +11,7 @@ dotenv.config();
 
 const app = express();
 const PORT = process.env.PORT || 5000;
+let mongoConnection;
 
 app.use(
   cors({
@@ -24,15 +25,37 @@ app.get("/api/health", (_req, res) => {
   res.json({ status: "ok", service: "XYZ Production API" });
 });
 
-app.use("/api/bookings", bookingRoutes);
-app.use("/api/contact", contactRoutes);
+const connectDatabase = async (_req, _res, next) => {
+  try {
+    if (!process.env.MONGODB_URI) {
+      throw new Error("MONGODB_URI is not configured.");
+    }
+
+    if (mongoose.connection.readyState !== 1) {
+      mongoConnection = mongoConnection || mongoose.connect(process.env.MONGODB_URI);
+      await mongoConnection;
+    }
+
+    next();
+  } catch (error) {
+    next(error);
+  }
+};
+
+app.use("/api/bookings", connectDatabase, bookingRoutes);
+app.use("/api/contact", connectDatabase, contactRoutes);
 
 app.use(notFound);
 app.use(errorHandler);
 
 const startServer = async () => {
   try {
-    await mongoose.connect(process.env.MONGODB_URI);
+    if (!process.env.MONGODB_URI) {
+      throw new Error("MONGODB_URI is not configured.");
+    }
+
+    mongoConnection = mongoose.connect(process.env.MONGODB_URI);
+    await mongoConnection;
     app.listen(PORT, () => {
       console.log(`Server running on http://localhost:${PORT}`);
     });
@@ -42,4 +65,8 @@ const startServer = async () => {
   }
 };
 
-startServer();
+if (!process.env.VERCEL) {
+  startServer();
+}
+
+export default app;
